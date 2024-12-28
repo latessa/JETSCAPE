@@ -34,6 +34,7 @@ jobs:
         cd homebrew-core
         git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
         brew install --formula ./Formula/b/boost.rb
+        brew install --formula ./Formula/b/boost-python3.rb
         brew install --formula ./Formula/g/graph-tool.rb
         brew install --formula cmake
         brew install --formula doxygen
