@@ -30,9 +30,10 @@ jobs:
     - name: brew install dependencies
       run: |
         export NONINTERACTIVE=1
-        brew tap homebrew/core
-        brew install homebrew/core/boost@1.86.0_2
-
+        git clone https://github.com/Homebrew/homebrew-core.git
+        cd homebrew-core
+        git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
+        brew install ./Formula/b/boost.rb
         brew install --formula cmake
         brew install --formula doxygen
         brew install --formula root
