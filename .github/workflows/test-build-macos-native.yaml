@@ -6,11 +6,13 @@ on:
       - main
       - JETSCAPE-3.6.6-RC
       - latessa/gtl_binary_function
+      - boost_version
   push:
     branches:
       - main
       - JETSCAPE-3.6.6-RC
       - latessa/gtl_binary_function
+      - boost_version
 
 env:
   REPO_NAME: ${{ github.event.repository.name }}
@@ -37,7 +39,7 @@ jobs:
         brew install --formula hdf5
         brew install --formula open-mpi
         brew install --formula gsl
-        brew install --formula boost
+        brew install --formula boost@1.86
         brew install --formula zlib
         . /opt/homebrew/bin/thisroot.sh
 
