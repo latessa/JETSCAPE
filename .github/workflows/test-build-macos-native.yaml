@@ -30,11 +30,11 @@ jobs:
     - name: brew install dependencies
       run: |
         export NONINTERACTIVE=1
-        brew install --formula boost@1.85
+        brew install --formula boost@1.86.0_2
         brew install --formula cmake
         brew install --formula doxygen
         brew install --formula root
-        brew install --formula graph-tool@2.79
+        brew install --formula graph-tool
         brew install --formula hdf5
         brew install --formula open-mpi
         brew install --formula gsl
