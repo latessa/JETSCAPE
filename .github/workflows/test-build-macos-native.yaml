@@ -30,7 +30,9 @@ jobs:
     - name: brew install dependencies
       run: |
         export NONINTERACTIVE=1
-        brew install https://github.com/Homebrew/homebrew-core/pkgs/container/core%2Fboost/298076003?tag=1.86.0_2
+        brew tap homebrew/core
+        brew install homebrew/core/boost@1.86.0_2
+
         brew install --formula cmake
         brew install --formula doxygen
         brew install --formula root
