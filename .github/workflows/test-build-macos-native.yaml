@@ -32,6 +32,7 @@ jobs:
         export NONINTERACTIVE=1
         brew install --formula boost
         brew install --formula boost-python3
+        brew install --formula eigen
         brew install --formula cmake
         brew install --formula gsl
         brew install --formula hdf5
