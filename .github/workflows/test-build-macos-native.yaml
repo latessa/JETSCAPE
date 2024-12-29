@@ -30,15 +30,10 @@ jobs:
     - name: brew install dependencies
       run: |
         export NONINTERACTIVE=1
-        git clone https://github.com/Homebrew/homebrew-core.git
-        cd homebrew-core
-        git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
-        brew install --formula ./Formula/b/boost.rb
-        brew install --formula ./Formula/b/boost-python3.rb
-        brew install --formula ./Formula/e/eigen.rb
-        brew install --formula ./Formula/c/cmake.rb
+        brew install --formula boost
+        brew install --formula boost-python3
+        brew install --formula cmake
         brew install --formula gsl
-        brew install --formula eigen
         brew install --formula hdf5
         brew install --formula doxygen
         brew install --formula root
@@ -107,7 +102,7 @@ jobs:
         echo "This is SMASH_DIR: "
         echo ${SMASH_DIR}
         ls ${SMASH_DIR}
-        cmake .. -DUSE_MUSIC=ON -DUSE_ISS=ON -DUSE_FREESTREAM=ON -DUSE_SMASH=ON
+        cmake .. -DUSE_MUSIC=ON -DUSE_ISS=ON -DUSE_FREESTREAM=ON -DUSE_SMASH=ON -std=c++17
         make -j2
 
     - name: Test Run
