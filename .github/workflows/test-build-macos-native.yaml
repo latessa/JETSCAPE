@@ -27,23 +27,23 @@ jobs:
 
     steps:
 
-    - name: brew install dependencies
-      run: |
-        export NONINTERACTIVE=1
-        git clone https://github.com/Homebrew/homebrew-core.git
-        cd homebrew-core
-        git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
-        brew install --formula ./Formula/b/boost.rb
-        brew install --formula ./Formula/b/boost-python3.rb
-        brew install --formula ./Formula/e/eigen.rb
-        brew install --formula cmake
-        brew install --formula doxygen
-        brew install --formula root
-        brew install --formula hdf5
-        brew install --formula open-mpi
-        brew install --formula gsl
-        brew install --formula zlib
-        . /opt/homebrew/bin/thisroot.sh
+    # - name: brew install dependencies
+    #   run: |
+    #     export NONINTERACTIVE=1
+    #     git clone https://github.com/Homebrew/homebrew-core.git
+    #     cd homebrew-core
+    #     git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
+    #     brew install --formula ./Formula/b/boost.rb
+    #     brew install --formula ./Formula/b/boost-python3.rb
+    #     brew install --formula ./Formula/e/eigen.rb
+    #     brew install --formula cmake
+    #     brew install --formula doxygen
+    #     brew install --formula root
+    #     brew install --formula hdf5
+    #     brew install --formula open-mpi
+    #     brew install --formula gsl
+    #     brew install --formula zlib
+    #     . /opt/homebrew/bin/thisroot.sh
 
     - name: set environment variables
       run: |
