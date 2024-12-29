@@ -31,6 +31,7 @@ jobs:
       run: |
         export NONINTERACTIVE=1
         brew install --formula gsl
+        brew install --formula eigen
     #     git clone https://github.com/Homebrew/homebrew-core.git
     #     cd homebrew-core
     #     git checkout ad67a6971d402fb4b6f4861378f13390e138f384  # Find the specific commit for Boost 1.86.0_2
