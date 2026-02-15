@@ -465,25 +465,37 @@ void ColorlessHadronization::DoHadronization(
     }
 
     pythia.next();
+
+    // Include additional particles and status codes from Pythia
     for (unsigned int ipart = 0; ipart < event.size(); ++ipart) {
-      if (event[ipart].isFinal()) {
-        int ide = pythia.event[ipart].id();
-        FourVector p(pythia.event[ipart].px(), pythia.event[ipart].py(),
-                     pythia.event[ipart].pz(), pythia.event[ipart].e());
-        FourVector x;
-        if (want_pos == 1)
-          hOut.push_back(
-              std::make_shared<Hadron>(Hadron(0, ide, 0, p, x)));  // Positive
-        else
-          hOut.push_back(
-              std::make_shared<Hadron>(Hadron(0, ide, -1, p, x)));  // Negative
-        // JSINFO << "Produced Hadron has id = " << pythia.event[ipart].id();
-        //  Print on output file
-        // hadfile << pythia.event[ipart].px() << " " <<
-        // pythia.event[ipart].py() << " " << pythia.event[ipart].pz() << " " <<
-        // pythia.event[ipart].e() << " " << pythia.event[ipart].id() << " " <<
-        // pythia.event[ipart].charge() << endl;
+      // skip system status code and negative status codes
+      if (event[ipart].status() <= 0)
+        continue;
+
+      int ide = pythia.event[ipart].id();
+
+      // skipping because of already included from input
+      if (abs(ide) <= 6 || ide == 21)
+        continue;
+
+      FourVector p(pythia.event[ipart].px(), pythia.event[ipart].py(),
+                   pythia.event[ipart].pz(), pythia.event[ipart].e());
+      FourVector x;
+
+      int status = event[ipart].status();
+      int label = ipart;
+
+      // To distinguish negative partons hadronized (negative status)
+      // from positive partons hadronized (positive status).
+      // These are not negative status codes from PYTHIA, which are skipped above.
+      if (want_pos == 0) {
+        status = -status;
       }
+
+      hOut.push_back(std::make_shared<Hadron>(Hadron(label, ide, status, p, x)));
+      //JSINFO << "Produced Hadron has id = " << pythia.event[ipart].id();
+      // Print on output file
+      //hadfile << pythia.event[ipart].px() << " " << pythia.event[ipart].py() << " " << pythia.event[ipart].pz() << " " << pythia.event[ipart].e() << " " << pythia.event[ipart].id() << " " << pythia.event[ipart].charge() << endl;
     }
     VERBOSE(1) << "#Showers hadronized together: " << shower.size()
                << ". There are " << hOut.size() << " hadrons and "
