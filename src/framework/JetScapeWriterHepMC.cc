@@ -126,11 +126,186 @@ void JetScapeWriterHepMC::WriteHeaderToFile() {
 
   evt.set_heavy_ion(heavyion);
 
-  /// @note also a good moment to initialize the hadron boolean
+  /// @note reset per-event state
+  hashadrons = false;
+  hadronizationvertex = nullptr;
+  pendingHadrons.clear();
+  hadronsByLabel.clear();
+  hadronDecayVertices.clear();
 }
 
 void JetScapeWriterHepMC::WriteEvent() {
   VERBOSE(1) << "Run JetScapeWriterHepMC: Write event # " << GetCurrentEvent();
+
+  // create all the hepmc particles and make them available by hash for fast
+  // lookup when creating the decay vertices 
+  for (const auto &hadron : pendingHadrons) {
+
+    // create the hepmc particle
+    auto hepmc = castHadronToHepMC(hadron);
+
+    // set particle hepmc status codes: 1 final state, 2 decayed, 4 special/beam
+    hepmc->set_status(mapHadronStatusForHepMC(*hadron));
+
+    // hash to hepmc hadron pointer for fast lookup
+    hadronsByLabel[hadron->plabel()] = hepmc;
+  }
+
+  // create the vertices to graph mother / daughter relationships
+  for (const auto &hadron : pendingHadrons) {
+    auto it = hadronsByLabel.find(hadron->plabel());
+    if (it == hadronsByLabel.end()) {
+      continue;
+    }
+
+    // it->first is lookup key, it->second is particle pointer
+    auto hepmc = it->second;
+
+    int mother1 = hadron->mother1_label();
+    int mother2 = hadron->mother2_label();
+
+    // valid mothers are positive indexes
+    if (mother1 <= 0) {
+      mother1 = -1;
+    }
+    if (mother2 <= 0 || mother2 == mother1) {
+      mother2 = -1;
+    }
+
+    // if particle has no mothers, attach to the default hadronization vertex.
+    if (mother1 < 0 && mother2 < 0) {
+      if (hadronizationvertex && !hepmc->production_vertex()) {
+        hadronizationvertex->add_particle_out(hepmc);
+      }
+      continue;
+    }
+
+    int key1 = mother1;
+    int key2 = mother2;
+
+    // ensure all single mothers are in the form (key, -1)
+    // and not in the form (-1, key)
+    if (key1 < 0 && key2 >= 0) {
+      key1 = key2;
+      key2 = -1;
+    }
+
+    // ensure that for two mothers, the smaller key is always first,
+    // so the same two mother indexes (regardless of order) hash to 
+    // the same decay vertex
+    if (key1 >= 0 && key2 >= 0 && key2 < key1) {
+      std::swap(key1, key2);
+    }
+
+    // look up the decay vertex for this mother pair, if it already
+    // exists, such as when adding this particle as a second daughter
+    // of the same mother(s)
+    auto vtxKey = std::make_pair(key1, key2);
+    auto vIt = hadronDecayVertices.find(vtxKey);
+    HepMC3::GenVertexPtr decayVtx = nullptr;
+    if (vIt != hadronDecayVertices.end()) {
+      decayVtx = vIt->second;
+    }
+
+    // lambda function to look up a mother and get its pointer
+    auto findMotherParticle = [&](int label) -> HepMC3::GenParticlePtr {
+      if (label < 0) {
+        return nullptr;
+      }
+      auto mIt = hadronsByLabel.find(label);
+      if (mIt == hadronsByLabel.end()) {
+        return nullptr;
+      }
+      return mIt->second;
+    };
+
+    auto motherParticle1 = findMotherParticle(key1);
+    auto motherParticle2 = findMotherParticle(key2);
+
+    // lambda function to choose an existing decay vertex from the mothers,
+    // if it exists, and warn if they have different decay vertices
+    auto chooseExistingDecayVertex = [&](const HepMC3::GenParticlePtr &m,
+                                         HepMC3::GenVertexPtr &selectedVtx) {
+
+      // if mother doesn't exist or doesn't have a decay vertex, return
+      if (!m || !m->end_vertex()) {
+        return;
+      }
+
+      // if there's no selected decay vertex yet, use this mother's decay vertex
+      if (!selectedVtx) {
+        selectedVtx = m->end_vertex();
+        return;
+      }
+
+      // if there's already a selected decay vertex, stick with it but warn
+      // if the mothers have different daughter pairs. This might happen if
+      // particle A has daughters C and D, and particle B has daughters D and E.
+      // When processing daughter D, we don't know whether to attach it to 
+      // the end vertex of A or B, so we just pick one (e.g. A) and warn.
+      // HepMC only supports one end (decay) vertex per particle.
+      if (selectedVtx != m->end_vertex()) {
+        JSWARN << "Hadron " << hadron->plabel()
+               << " has multiple mothers with different decay vertices.";
+      }
+    };
+
+    // if no decay vertex has been created yet, create one now
+    // and ad it to the vertices list. Also add it to the map.
+    if (!decayVtx) {
+      chooseExistingDecayVertex(motherParticle1, decayVtx);
+      chooseExistingDecayVertex(motherParticle2, decayVtx);
+
+      if (!decayVtx) {
+        HepMC3::FourVector vtxPosition(hadron->x_in().x(), hadron->x_in().y(),
+                                       hadron->x_in().z(), hadron->x_in().t());
+        decayVtx = make_shared<GenVertex>(vtxPosition);
+        vertices.push_back(decayVtx);
+      }
+
+      hadronDecayVertices[vtxKey] = decayVtx;
+    }
+
+    
+    // lambda functon to attach a mother particle to the decay vertex
+    // if it's not already attached.
+    auto attachMotherIfCompatible = [&](const HepMC3::GenParticlePtr &mother,
+                                        int label) {
+      if (!mother) {
+        if (label >= 0) {
+          JSWARN << "Hadron " << hadron->plabel()
+                 << " has a mother label " << label
+                 << " but found no corresponding mother particle.";
+        }
+        return;
+      }
+
+
+      if (mother->end_vertex() && mother->end_vertex() != decayVtx) {
+        JSWARN << "Mother hadron " << label
+               << " has conflicting decay vertices. This hadron " << hadron->plabel()
+               << " has a mother with a different decay vertex; skip attaching this mother.";
+        return;
+      }
+
+      if (!mother->end_vertex()) {
+        decayVtx->add_particle_in(mother);
+      }
+    };
+
+    attachMotherIfCompatible(motherParticle1, key1);
+    attachMotherIfCompatible(motherParticle2, key2);
+
+    // attach this hadron as a daughter of the decay vertex
+    // if it is not already attached
+    if (!hepmc->production_vertex()) {
+      decayVtx->add_particle_out(hepmc);
+    } else if (hepmc->production_vertex() != decayVtx) {
+      JSWARN << "Hadron " << hadron->plabel()
+             << " already has a different production vertex; keeping existing "
+                "vertex.";
+    }
+  }
 
   // Have collected all vertices now.
   // Add all vertices to the event
@@ -161,6 +336,9 @@ void JetScapeWriterHepMC::WriteEvent() {
   write_event(evt);
   vertices.clear();
   hadronizationvertex = 0;
+  pendingHadrons.clear();
+  hadronsByLabel.clear();
+  hadronDecayVertices.clear();
 }
 
 /**
@@ -410,16 +588,7 @@ void JetScapeWriterHepMC::Write(weak_ptr<Hadron> h) {
     hashadrons = true;
   }
 
-  // now attach
-  auto hepmc = castHadronToHepMC(hadron);
-  if (!hepmc->status()) {
-    /**
-     * @note unless otherwise specified, all hadrons get status 1
-     * @todo TODO: Need to better account for short-lived hadrons
-     */
-    hepmc->set_status(1);
-  }
-  hadronizationvertex->add_particle_out(hepmc);
+  pendingHadrons.push_back(hadron);
 }
 
 /**

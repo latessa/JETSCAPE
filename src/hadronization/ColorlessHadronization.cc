@@ -469,7 +469,7 @@ void ColorlessHadronization::DoHadronization(
     // Include additional particles and status codes from Pythia
     for (unsigned int ipart = 0; ipart < event.size(); ++ipart) {
       // skip system status code and negative status codes
-      if (event[ipart].status() <= 0)
+      if (event[ipart].status() == 0)
         continue;
 
       int ide = pythia.event[ipart].id();
@@ -492,7 +492,13 @@ void ColorlessHadronization::DoHadronization(
         status = -status;
       }
 
-      hOut.push_back(std::make_shared<Hadron>(Hadron(label, ide, status, p, x)));
+        auto out_hadron =
+          std::make_shared<Hadron>(Hadron(label, ide, status, p, x));
+        out_hadron->set_mother_labels(event[ipart].mother1(),
+                      event[ipart].mother2());
+        out_hadron->set_daughter_labels(event[ipart].daughter1(),
+                        event[ipart].daughter2());
+        hOut.push_back(out_hadron);
       //JSINFO << "Produced Hadron has id = " << pythia.event[ipart].id();
       // Print on output file
       //hadfile << pythia.event[ipart].px() << " " << pythia.event[ipart].py() << " " << pythia.event[ipart].pz() << " " << pythia.event[ipart].e() << " " << pythia.event[ipart].id() << " " << pythia.event[ipart].charge() << endl;
