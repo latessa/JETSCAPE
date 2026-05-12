@@ -126,7 +126,11 @@ void JetScapeWriterHepMC::WriteHeaderToFile() {
 
   evt.set_heavy_ion(heavyion);
 
-  /// @note also a good moment to initialize the hadron boolean
+  /// @note reset state per-event
+  hashadrons = false;
+  hadronizationvertex = nullptr;
+  hadronsByLabel.clear();
+  hadronDecayVertices.clear();
 }
 
 void JetScapeWriterHepMC::WriteEvent() {
@@ -161,6 +165,8 @@ void JetScapeWriterHepMC::WriteEvent() {
   write_event(evt);
   vertices.clear();
   hadronizationvertex = 0;
+  hadronsByLabel.clear();
+  hadronDecayVertices.clear();
 }
 
 /**
@@ -412,14 +418,34 @@ void JetScapeWriterHepMC::Write(weak_ptr<Hadron> h) {
 
   // now attach
   auto hepmc = castHadronToHepMC(hadron);
-  if (!hepmc->status()) {
-    /**
-     * @note unless otherwise specified, all hadrons get status 1
-     * @todo TODO: Need to better account for short-lived hadrons
-     */
-    hepmc->set_status(1);
+  hepmc->set_status(mapHadronStatusForHepMC(*hadron));
+  hadronsByLabel[hadron->plabel()] = hepmc;
+
+  int motherLabel = -1;
+  if (hadron->mother1_label() != hadron->plabel() &&
+      hadronsByLabel.find(hadron->mother1_label()) != hadronsByLabel.end()) {
+    motherLabel = hadron->mother1_label();
+  } else if (
+      hadron->mother2_label() != hadron->plabel() &&
+      hadronsByLabel.find(hadron->mother2_label()) != hadronsByLabel.end()) {
+    motherLabel = hadron->mother2_label();
   }
-  hadronizationvertex->add_particle_out(hepmc);
+
+  if (motherLabel > 0) {
+    auto vDecayIt = hadronDecayVertices.find(motherLabel);
+    if (vDecayIt == hadronDecayVertices.end()) {
+      auto vDecay = make_shared<GenVertex>(HepMC3::FourVector(
+          hadron->x_in().x(), hadron->x_in().y(), hadron->x_in().z(),
+          hadron->x_in().t()));
+      vDecay->add_particle_in(hadronsByLabel[motherLabel]);
+      vertices.push_back(vDecay);
+      hadronDecayVertices[motherLabel] = vDecay;
+      vDecayIt = hadronDecayVertices.find(motherLabel);
+    }
+    vDecayIt->second->add_particle_out(hepmc);
+  } else {
+    hadronizationvertex->add_particle_out(hepmc);
+  }
 }
 
 /**

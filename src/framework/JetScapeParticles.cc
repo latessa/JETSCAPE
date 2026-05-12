@@ -459,6 +459,10 @@ bool Parton::isPhoton(int pid) {
 Hadron::Hadron(const Hadron &srh)
     : JetScapeParticleBase::JetScapeParticleBase(srh) {
   width_ = srh.width_;
+  mother1_label_ = srh.mother1_label_;
+  mother2_label_ = srh.mother2_label_;
+  daughter1_label_ = srh.daughter1_label_;
+  daughter2_label_ = srh.daughter2_label_;
 }
 
 Hadron::Hadron(int label, int id, int stat, const FourVector &p,
@@ -516,12 +520,20 @@ bool Hadron::has_no_position() {
 Hadron &Hadron::operator=(Hadron &c) {
   JetScapeParticleBase::operator=(c);
   width_ = c.width_;
+  mother1_label_ = c.mother1_label_;
+  mother2_label_ = c.mother2_label_;
+  daughter1_label_ = c.daughter1_label_;
+  daughter2_label_ = c.daughter2_label_;
   return *this;
 }
 
 Hadron &Hadron::operator=(const Hadron &c) {
   JetScapeParticleBase::operator=(c);
   width_ = c.width_;
+  mother1_label_ = c.mother1_label_;
+  mother2_label_ = c.mother2_label_;
+  daughter1_label_ = c.daughter1_label_;
+  daughter2_label_ = c.daughter2_label_;
   return *this;
 }
 
