@@ -21,6 +21,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "HepMC3/GenEvent.h"
 #include "HepMC3/Print.h"
@@ -150,6 +151,12 @@ class JetScapeWriterHepMC : public JetScapeWriter, public HepMC3::WriterAscii {
   HepMC3::GenVertexPtr hadronizationvertex;
   std::map<int, HepMC3::GenParticlePtr> hadronsByLabel;
   std::map<int, HepMC3::GenVertexPtr> hadronDecayVertices;
+
+  /** to hold hadrons before assignment on second pass */
+  std::vector<std::shared_ptr<Hadron>> bufferedHadrons;
+  void FlushBufferedHadrons();
+  void EnsureHadronizationVertex();
+  int FindMotherLabel(const Hadron &hadron) const;
 
   /**
    * @note WriteEvent needs to know whether it should overwrite final

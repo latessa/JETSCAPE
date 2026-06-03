@@ -131,10 +131,13 @@ void JetScapeWriterHepMC::WriteHeaderToFile() {
   hadronizationvertex = nullptr;
   hadronsByLabel.clear();
   hadronDecayVertices.clear();
+  bufferedHadrons.clear();
 }
 
 void JetScapeWriterHepMC::WriteEvent() {
   VERBOSE(1) << "Run JetScapeWriterHepMC: Write event # " << GetCurrentEvent();
+
+  FlushBufferedHadrons();
 
   // Have collected all vertices now.
   // Add all vertices to the event
@@ -167,6 +170,7 @@ void JetScapeWriterHepMC::WriteEvent() {
   hadronizationvertex = 0;
   hadronsByLabel.clear();
   hadronDecayVertices.clear();
+  bufferedHadrons.clear();
 }
 
 /**
@@ -376,11 +380,13 @@ void JetScapeWriterHepMC::Write(weak_ptr<PartonShower> ps) {
 /**
  * @brief Writes a hadron to the HepMC3 format.
  *
- * This function takes a weak pointer to a Hadron object, locks it to obtain a
- * shared pointer, and writes it to the HepMC3 format. If the hadronization
- * vertex does not exist, it creates one with a dummy position and a dummy
- * mother particle. All hadrons are attached to this hadronization vertex. If
- * the hadron's status is not specified, it is set to 1 by default.
+ * This function takes a weak pointer to a `Hadron` object,
+ * locks it to obtain a shared pointer, and checks if the hadron is valid.
+ * If the hadron is valid, it adds the hadron to a buffer of hadrons
+ * (`bufferedHadrons`) and sets a flag (`hashadrons`) to indicate that
+ * hadrons have been processed. The actual conversion of the hadron to HepMC
+ * format and its integration into the event graph is deferred to the
+ * `FlushBufferedHadrons()` function.
  *
  * @param h A weak pointer to a Hadron object.
  */
@@ -396,56 +402,16 @@ void JetScapeWriterHepMC::Write(weak_ptr<Hadron> h) {
    * Not sure how this is supposed to be done in HepMC3
    * Our solution: Attach all hadrons to one dedicated hadronization vertex.
    * Future option: Have separate shower and bulk vertices?
+   *
+   * In the past, all hadrons were attached to one dedicated hadronization vertex,
+   * but that made it impossible to show decays chains in the HepMC output.
+   * Now, the Pythia record is first iterated over to buffer all hadrons. Writing
+   * the hadrons is then deferred to a separate iteration. Here only hadrons are
+   * pushed to the buffer. See FlushBufferedHadrons() for the two-pass workflow.
    */
 
-  /// @note Create if it doesn't exist yet
-  if (!hadronizationvertex) {
-    /// @note dummy position, set it to a late time...
-    HepMC3::FourVector vtxPosition(0, 0, 0, 100);
-    hadronizationvertex = make_shared<GenVertex>(vtxPosition);
-
-    /**
-     * @note dummy mother -- could also maybe use the first/hardest shower
-     * initiator
-     */
-    HepMC3::FourVector pmom(0, 0, 0, 0);
-    make_shared<GenParticle>(pmom, 0, 0);
-    hadronizationvertex->add_particle_in(make_shared<GenParticle>(pmom, 0, 0));
-
-    vertices.push_back(hadronizationvertex);
-    hashadrons = true;
-  }
-
-  // now attach
-  auto hepmc = castHadronToHepMC(hadron);
-  hepmc->set_status(mapHadronStatusForHepMC(*hadron));
-  hadronsByLabel[hadron->plabel()] = hepmc;
-
-  int motherLabel = -1;
-  if (hadron->mother1_label() != hadron->plabel() &&
-      hadronsByLabel.find(hadron->mother1_label()) != hadronsByLabel.end()) {
-    motherLabel = hadron->mother1_label();
-  } else if (
-      hadron->mother2_label() != hadron->plabel() &&
-      hadronsByLabel.find(hadron->mother2_label()) != hadronsByLabel.end()) {
-    motherLabel = hadron->mother2_label();
-  }
-
-  if (motherLabel > 0) {
-    auto vDecayIt = hadronDecayVertices.find(motherLabel);
-    if (vDecayIt == hadronDecayVertices.end()) {
-      auto vDecay = make_shared<GenVertex>(HepMC3::FourVector(
-          hadron->x_in().x(), hadron->x_in().y(), hadron->x_in().z(),
-          hadron->x_in().t()));
-      vDecay->add_particle_in(hadronsByLabel[motherLabel]);
-      vertices.push_back(vDecay);
-      hadronDecayVertices[motherLabel] = vDecay;
-      vDecayIt = hadronDecayVertices.find(motherLabel);
-    }
-    vDecayIt->second->add_particle_out(hepmc);
-  } else {
-    hadronizationvertex->add_particle_out(hepmc);
-  }
+  bufferedHadrons.push_back(hadron);
+  hashadrons = true;
 }
 
 /**
@@ -470,4 +436,101 @@ void JetScapeWriterHepMC::Exec() {
    * @note This function currently does not perform any operations.
    */
 }
+
+/**
+ * @brief Ensures that the hadronization vertex exists in the HepMC event.
+ *
+ * This function checks if the hadronization vertex has already been created.
+ * If it has not been created, it initializes one with a dummy incoming particle.
+ */
+void JetScapeWriterHepMC::EnsureHadronizationVertex() {
+  if (hadronizationvertex)
+    return;
+
+  HepMC3::FourVector vtxPosition(0, 0, 0, 100);
+  hadronizationvertex = make_shared<GenVertex>(vtxPosition);
+
+  // dummy particle since hadronization vertex particles have no mothers
+  HepMC3::FourVector pmom(0, 0, 0, 0);
+  hadronizationvertex->add_particle_in(make_shared<GenParticle>(pmom, 0, 0));
+
+  vertices.push_back(hadronizationvertex);
+}
+
+/**
+ * @brief Finds the mother label for a given hadron.
+ */
+int JetScapeWriterHepMC::FindMotherLabel(const Hadron &hadron) const {
+  const int self = hadron.plabel();
+
+  if (hadron.mother1_label() > 0 &&
+      hadron.mother1_label() != self &&
+      hadronsByLabel.find(hadron.mother1_label()) != hadronsByLabel.end()) {
+    return hadron.mother1_label();
+  }
+
+  if (hadron.mother2_label() > 0 &&
+      hadron.mother2_label() != self &&
+      hadronsByLabel.find(hadron.mother2_label()) != hadronsByLabel.end()) {
+    return hadron.mother2_label();
+  }
+
+  return -1;
+}
+
+/**
+ * @brief Flushes the buffered hadrons to the HepMC event.
+ *
+ * This function processes the buffered hadrons in two passes.
+ * In the first pass, HepMC particles for each hadron are stored and mapped.
+ * In the second pass, the decay chain graph is constructed, connecting
+ * particles to their mothers or attaching to hadronization vertex if no mothers
+ * are found.
+ *
+ * @note The two pass approach ensures that all particles are mapped before
+ * searching for mothers, to avoid the possibility that mothers could appear
+ * after their daughters in the Pythia record.
+ */
+void JetScapeWriterHepMC::FlushBufferedHadrons() {
+  if (bufferedHadrons.empty())
+    return;
+
+  EnsureHadronizationVertex();
+
+  // Pass 1: store HepMC particles and map them by label
+  for (const auto &hadron : bufferedHadrons) {
+    auto hepmc = castHadronToHepMC(hadron);
+    hepmc->set_status(mapHadronStatusForHepMC(*hadron));
+    hadronsByLabel[hadron->plabel()] = hepmc;
+  }
+
+  // Pass 2: connect particles into the graph.
+  for (const auto &hadron : bufferedHadrons) {
+    auto hepmc = hadronsByLabel[hadron->plabel()];
+    int motherLabel = FindMotherLabel(*hadron);
+
+    if (motherLabel > 0) {
+      auto vDecayIt = hadronDecayVertices.find(motherLabel);
+
+      if (vDecayIt == hadronDecayVertices.end()) {
+        auto vDecay = make_shared<GenVertex>(HepMC3::FourVector(
+            hadron->x_in().x(), hadron->x_in().y(), hadron->x_in().z(),
+            hadron->x_in().t()));
+
+        vDecay->add_particle_in(hadronsByLabel[motherLabel]);
+        vertices.push_back(vDecay);
+
+        hadronDecayVertices[motherLabel] = vDecay;
+        vDecayIt = hadronDecayVertices.find(motherLabel);
+      }
+
+      vDecayIt->second->add_particle_out(hepmc);
+    } else {
+      hadronizationvertex->add_particle_out(hepmc);
+    }
+  }
+
+  bufferedHadrons.clear();
+}
+
 }  // end namespace Jetscape
