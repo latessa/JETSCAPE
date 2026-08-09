@@ -87,6 +87,28 @@ void JetScapeWriterHepMC::WriteHeaderToFile() {
    */
   evt = GenEvent(Units::GEV, Units::MM);
 
+  // Get physics inputs for beam particle information
+  auto phys_inputs = GetXMLElement({"IS", "Trento", "PhysicsInputs"});
+  std::string projectile = phys_inputs->Attribute("projectile");
+  std::string target = phys_inputs->Attribute("target");
+  double sqrts = std::atof(phys_inputs->Attribute("sqrts"));
+
+  std::map<std::string, int> beam_ids = {
+      {"Cu", 1000290630}, {"Kr", 1000360840}, {"Xe", 1000541290},
+      {"Au", 1000791970}, {"Pb", 1000822080}, {"O", 1000080160},
+      {"U", 1000922380},  {"p", 2212}};
+
+  int IonBeamP = beam_ids.at(projectile);
+  int IonBeamT = beam_ids.at(target);
+
+  // Create beam particles and add them to the event
+  auto BeamPP = make_shared<GenParticle>(
+      HepMC3::FourVector(0.0, 0.0, sqrts / 2.0, sqrts / 2.0), IonBeamP, 4);
+  auto BeamPT = make_shared<GenParticle>(
+      HepMC3::FourVector(0.0, 0.0, -sqrts / 2.0, sqrts / 2.0), IonBeamT, 4);
+  evt.add_beam_particle(BeamPP);
+  evt.add_beam_particle(BeamPT);
+
   // Expects pb, pythia delivers mb
   auto xsec = make_shared<HepMC3::GenCrossSection>();
   xsec->set_cross_section(GetHeader().GetSigmaGen() * 1e9, 0);
